@@ -119,7 +119,7 @@ class RecursiveCompressionEngine:
         
     def _create_selector(self, s_type: str):
         if s_type == 'exact':
-            return ExactSelector()
+            return ExactSelector(backend=self.backend)
         elif s_type == 'lsh':
             config = self.model.config
             head_dim = config.hidden_size // config.num_attention_heads
@@ -136,9 +136,7 @@ class RecursiveCompressionEngine:
         
     def validate_config(self):
         """Enforce hardware compatibility matrix."""
-        # Option 1 (Exact) + Flash -> ERROR
-        if self.selector_type == 'exact' and self.backend == 'flash':
-             raise ValueError("Configuration Error: ExactSelector (Option 1) requires Eager Attention. Flash Attention does not support chunked score access.")
+        # Exact + Flash is now supported via post-hoc Q recomputation (FlashAttentionScorer)
         
         # Check protection divisor
         if self.protection_divisor <= 1:
@@ -283,6 +281,21 @@ class RecursiveCompressionEngine:
 
             # Query vectors
             query_vectors = last_layer_key[:, :, cache_query_start:, :][0].mean(dim=0)
+
+            # Flash-backend post-forward scoring (recomputes Q from captured hidden states)
+            if hasattr(self.selector, 'post_forward_score'):
+                score_history = (self.compression_mode == 'recursive')
+                prev_tail_len = 0 if score_history else self.prev_local_tail_len
+                self.selector.post_forward_score(
+                    model=self.model,
+                    kv_cache=new_kv_cache,
+                    candidate_indices=cand_abs_indices,
+                    query_position_ids=query_positions,
+                    score_history=score_history,
+                    prefix_kv_len=temp_prefix_cache_len,
+                    block_len=block_len,
+                    prev_tail_len=prev_tail_len,
+                )
 
             selected_indices_only = self.selector.select(
                 query_ids=query_ids,
