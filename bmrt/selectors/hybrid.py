@@ -33,6 +33,13 @@ class HybridSelector(BaseSelector):
         if hasattr(self.secondary, 'prepare_block'):
             self.secondary.prepare_block(**kwargs)
 
+    def post_forward_score(self, **kwargs):
+        """Propagate post-forward scoring to child selectors (flash exact)."""
+        if hasattr(self.primary, 'post_forward_score'):
+            self.primary.post_forward_score(**kwargs)
+        if hasattr(self.secondary, 'post_forward_score'):
+            self.secondary.post_forward_score(**kwargs)
+
     def select(
         self,
         query_ids: torch.Tensor,
