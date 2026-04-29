@@ -28,10 +28,32 @@ class FlashAttentionScorer:
     to the eager-mode AttentionScoreAccumulator.
     """
 
-    def __init__(self):
+    def __init__(self, query_stride: int = 1, q_chunk_size: int = 16):
+        """
+        Parameters
+        ----------
+        query_stride : int, default 1
+            Sub-sample query positions when scoring.  ``stride=N`` keeps
+            every N-th query in the captured slice.  ``stride=1`` keeps
+            all queries (default).  Reduces compute linearly: 2× → ~50%
+            cheaper, 4× → ~25%.  Trade-off: coarser ranking signal.
+        q_chunk_size : int, default 16
+            Process query positions in chunks of this size inside
+            ``_score_layer`` to bound the peak softmax tensor.  Set to
+            a value >= captured query count to disable chunking.  Memory
+            scales linearly with this value; compute is unchanged.
+        """
+        if query_stride < 1:
+            raise ValueError(f"query_stride must be >= 1, got {query_stride}")
+        if q_chunk_size < 1:
+            raise ValueError(f"q_chunk_size must be >= 1, got {q_chunk_size}")
+        self._query_stride = query_stride
+        self._q_chunk_size = q_chunk_size
+
         self._hooks: List = []
         self._captured_hidden: Dict[int, torch.Tensor] = {}
-        self._query_len: int = 0
+        self._query_len: int = 0       # original (un-sub-sampled) length
+        self._captured_q_len: int = 0  # actual captured length after stride
         self._is_active: bool = False
         self._num_layers: int = 0
         # Cached model reference for score computation
@@ -72,10 +94,13 @@ class FlashAttentionScorer:
     # ------------------------------------------------------------------
 
     def start_block(self, query_len: int):
-        """Prepare for a new block.  ``query_len`` tells the hooks how
-        many trailing positions of hidden_states to keep."""
+        """Prepare for a new block.  ``query_len`` is the *original* number
+        of trailing positions.  After applying ``query_stride`` the actual
+        captured count is ``ceil(query_len / query_stride)``."""
         self._captured_hidden.clear()
         self._query_len = query_len
+        # ceil(query_len / stride) — number of positions kept after stride
+        self._captured_q_len = (query_len + self._query_stride - 1) // self._query_stride
         self._is_active = True
         self.accumulated_scores = None
 
@@ -137,6 +162,11 @@ class FlashAttentionScorer:
         # Ensure position_ids is [1, Q]
         if query_position_ids.dim() == 1:
             query_position_ids = query_position_ids.unsqueeze(0)
+
+        # If the caller passed un-sub-sampled positions but we sub-sampled
+        # the captured hidden states, sub-sample positions to match.
+        if self._query_stride > 1 and query_position_ids.shape[-1] == self._query_len:
+            query_position_ids = query_position_ids[..., ::self._query_stride]
 
         # ---- Precompute things that are identical across layers ----
         # Resolve rotary_emb module once (location moved in transformers 4.45+:
@@ -208,10 +238,17 @@ class FlashAttentionScorer:
             if hidden_states is None:
                 return
             q_len = scorer._query_len
+            stride = scorer._query_stride
             if q_len > 0 and q_len <= hidden_states.shape[1]:
-                scorer._captured_hidden[layer_idx] = hidden_states[:, -q_len:, :].detach()
+                tail = hidden_states[:, -q_len:, :]
+                if stride > 1:
+                    tail = tail[:, ::stride, :]
+                scorer._captured_hidden[layer_idx] = tail.detach()
             else:
-                scorer._captured_hidden[layer_idx] = hidden_states.detach()
+                tail = hidden_states
+                if stride > 1:
+                    tail = tail[:, ::stride, :]
+                scorer._captured_hidden[layer_idx] = tail.detach()
 
         return hook
 
@@ -250,28 +287,32 @@ class FlashAttentionScorer:
         K_window = K_cache[:, :, score_start:score_end, :]    # [1, kv_heads, W, D]
         num_groups = num_heads // num_kv_heads
 
-        # --- Compute attention scores via GQA broadcast (no repeat_interleave copy) ---
+        # --- GQA broadcast (no repeat_interleave copy) ---
         # Q: [1, H, Q, D] → [1, kv_heads, groups, Q, D]
         # K: [1, kv_heads, W, D] → [1, kv_heads, 1, W, D] (broadcasts over groups)
         scale = 1.0 / math.sqrt(head_dim)
         q_g = q_rotated.view(1, num_kv_heads, num_groups, q_len, head_dim)
         k_g = K_window.unsqueeze(2)  # [1, kv_heads, 1, W, D] — broadcast view, no copy
-        # raw_scores: [1, kv_heads, groups, Q, W]
-        raw_scores = torch.matmul(
-            q_g.to(k_g.dtype),
-            k_g.transpose(-2, -1),
-        ) * scale
+        kT = k_g.transpose(-2, -1)   # [1, kv_heads, 1, D, W]
 
-        # Apply causal mask (precomputed, broadcasts over kv_heads/groups)
-        raw_scores = raw_scores.masked_fill(~causal_mask, float('-inf'))
-
-        # Softmax in fp32 for numerical stability, then collapse heads/queries
-        attn_weights = torch.softmax(raw_scores.float(), dim=-1)  # fp32
-        # Replace NaN from all-masked rows with 0
-        attn_weights = attn_weights.nan_to_num(0.0)
-
-        # Sum over (batch, kv_heads, groups, queries) → [W]
-        layer_score = attn_weights.sum(dim=(0, 1, 2, 3))
+        # --- Compute attention scores in Q chunks to bound peak memory ---
+        # Without chunking the [B, kv_heads, groups, Q, W] softmax tensor in fp32
+        # can dominate peak memory; chunking trades a constant overhead per chunk
+        # for ~Q_CHUNK/Q reduction in peak temp.  Math is unchanged.
+        scored_window_len = K_window.shape[2]
+        layer_score = torch.zeros(
+            scored_window_len, dtype=torch.float32, device=K_window.device,
+        )
+        chunk = self._q_chunk_size
+        for qs in range(0, q_len, chunk):
+            qe = min(qs + chunk, q_len)
+            q_chunk = q_g[:, :, :, qs:qe, :]
+            cm_chunk = causal_mask[..., qs:qe, :]   # broadcasts over kv_heads/groups
+            raw = torch.matmul(q_chunk.to(k_g.dtype), kT) * scale
+            raw = raw.masked_fill(~cm_chunk, float('-inf'))
+            aw = torch.softmax(raw.float(), dim=-1).nan_to_num(0.0)
+            # aw: [1, kv_heads, groups, qe-qs, W] → sum to [W]
+            layer_score.add_(aw.sum(dim=(0, 1, 2, 3)))
 
         return layer_score
 

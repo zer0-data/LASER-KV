@@ -17,7 +17,18 @@ class ExactSelector(BaseSelector):
     The ``select()`` interface is identical for both backends.
     """
 
-    def __init__(self, backend: str = 'eager'):
+    def __init__(self, backend: str = 'eager', query_stride: int = 1, q_chunk_size: int = 16):
+        """
+        Parameters
+        ----------
+        backend : 'eager' | 'flash'
+        query_stride : int, default 1
+            (Flash backend only) Sub-sample query positions by this stride
+            when scoring.  Linear compute reduction; coarser ranking signal.
+        q_chunk_size : int, default 16
+            (Flash backend only) Chunk size for Q in the per-layer scoring
+            matmul.  Bounds peak softmax tensor memory; math unchanged.
+        """
         self.backend = backend
         self.block_start = 0
         self.block_len = 0
@@ -29,11 +40,17 @@ class ExactSelector(BaseSelector):
             self.flash_scorer = None
         elif backend == 'flash':
             self.accumulator = None
-            self.flash_scorer = FlashAttentionScorer()
+            self.flash_scorer = FlashAttentionScorer(
+                query_stride=query_stride,
+                q_chunk_size=q_chunk_size,
+            )
         else:
             raise ValueError(f"ExactSelector: unknown backend '{backend}'. Use 'eager' or 'flash'.")
 
-        print(f"  [ExactSelector] backend={backend}")
+        if backend == 'flash':
+            print(f"  [ExactSelector] backend=flash query_stride={query_stride} q_chunk_size={q_chunk_size}")
+        else:
+            print(f"  [ExactSelector] backend={backend}")
 
     def setup(self, model):
         if self.backend == 'eager':
