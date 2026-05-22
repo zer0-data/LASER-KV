@@ -63,6 +63,7 @@ def main(args):
                 lsh_mode=args.lsh_mode,
                 selector_mode=args.mode,
                 compression_mode=args.compression_mode,
+                boundary_smoothing=not args.no_boundary_smoothing,
                 backend=args.backend,
                 budget=budget,
                 protection_divisor=args.protection_divisor,
@@ -158,6 +159,7 @@ def main(args):
             f"backend={args.backend} | compression_mode={args.compression_mode} | "
             f"sampling_config=compression_ratio:{args.compression_ratio},block_size:{args.block_size},budget:{budget} | "
             f"protection_divisor={args.protection_divisor} | "
+            f"boundary_smoothing={not args.no_boundary_smoothing} | "
             f"samples=start:{args.start_sample_index},n:{args.num_samples} | "
             f"correct={correct}/{total} | accuracy={accuracy:.2f}%\n"
         )
@@ -197,6 +199,7 @@ if __name__ == '__main__':
     parser.add_argument('--start_sample_index', type=int, default=0)
     parser.add_argument('--num_samples', type=int, default=100)
     parser.add_argument('--results_file', default='accuracies.txt', help='File to append accuracy results')
+    parser.add_argument('--no_boundary_smoothing', action='store_true', help='Ablation: block-only scoring window (no prev tail look-back)')
     
     args = parser.parse_args()
     main(args)

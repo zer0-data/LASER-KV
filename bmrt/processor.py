@@ -26,6 +26,7 @@ class RecursiveCompressionEngine:
         lsh_mode: str = 'frequency_rank', # 'frequency_rank' or 'magicpig_baseline'
         selector_mode: str = 'l2', # tie-breaker: 'l2','max_sim','mahalanobis','partitioned_centroid','none'
         compression_mode: str = 'accumulate', # 'accumulate' or 'recursive'
+        boundary_smoothing: bool = True, # True: scoring window = prev_tail+block-cur_tail; False: block only
         backend: str = 'eager', # 'eager' or 'flash'
         budget: int = 4096, # Total budget
         protection_divisor: int = 4, # n
@@ -46,6 +47,7 @@ class RecursiveCompressionEngine:
         self.lsh_mode = lsh_mode
         self.selector_mode = selector_mode
         self.compression_mode = compression_mode
+        self.boundary_smoothing = boundary_smoothing
         self.backend = backend
         self.budget = budget
         self.protection_divisor = protection_divisor
@@ -84,6 +86,7 @@ class RecursiveCompressionEngine:
         print(f"  Selector: {selector_type} (Mode: {lsh_mode})")
         print(f"  Selector tie-breaker mode: {self.selector_mode}")
         print(f"  Compression Mode: {compression_mode}")
+        print(f"  Boundary Smoothing: {boundary_smoothing}")
         
         self.validate_config()
         
@@ -212,7 +215,7 @@ class RecursiveCompressionEngine:
         # NOT persist this merge into the running `accumulated_kv_cache`.
         temp_prefix_kv = prefix_kv_cache
         temp_prefix_cache_len = prefix_cache_len
-        if self.compression_mode == 'accumulate' and self.prev_local_tail_kv is not None and self.prev_local_tail_len > 0:
+        if self.compression_mode == 'accumulate' and self.boundary_smoothing and self.prev_local_tail_kv is not None and self.prev_local_tail_len > 0:
             temp_prefix_kv = merge_kv_caches(prefix_kv_cache, self.prev_local_tail_kv)
             temp_prefix_cache_len = prefix_cache_len + self.prev_local_tail_len
 
@@ -269,7 +272,7 @@ class RecursiveCompressionEngine:
             else:
                 cand_abs_indices = []
                 # Include previous local tail absolute indices if present
-                if self.compression_mode == 'accumulate' and self.prev_local_tail_kv is not None and self.prev_local_tail_len > 0:
+                if self.compression_mode == 'accumulate' and self.boundary_smoothing and self.prev_local_tail_kv is not None and self.prev_local_tail_len > 0:
                     cand_abs_indices.extend(list(range(prefix_cache_len, prefix_cache_len + self.prev_local_tail_len)))
                 # Current-block candidate absolutes (block comes after temp prefix)
                 cand_abs_indices.extend([cache_block_start + idx for idx in candidate_indices])
@@ -356,7 +359,7 @@ class RecursiveCompressionEngine:
             # Partition selected absolutes into prev-tail (from previous tail) and current-block selections
             prev_selected_abs = []
             curr_selected_abs = []
-            if self.compression_mode == 'accumulate' and self.prev_local_tail_kv is not None and self.prev_local_tail_len > 0:
+            if self.compression_mode == 'accumulate' and self.boundary_smoothing and self.prev_local_tail_kv is not None and self.prev_local_tail_len > 0:
                 prev_range_start = prefix_cache_len
                 prev_range_end = prefix_cache_len + self.prev_local_tail_len
                 for si in selected_indices_only:

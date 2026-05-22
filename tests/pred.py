@@ -61,6 +61,7 @@ def main():
     parser.add_argument('--hybrid_primary', default='exact')
     parser.add_argument('--hybrid_secondary', default='lsh')
     parser.add_argument('--hybrid_ratio', type=float, default=0.5)
+    parser.add_argument('--no_boundary_smoothing', action='store_true', help='Ablation: block-only scoring window (no prev tail look-back)')
 
     args = parser.parse_args()
 
@@ -113,6 +114,7 @@ def main():
                 lsh_mode=args.lsh_mode,
                 selector_mode=args.mode,
                 compression_mode=args.compression_mode,
+                boundary_smoothing=not args.no_boundary_smoothing,
                 backend=args.backend,
                 budget=budget,
                 protection_divisor=args.protection_divisor,
