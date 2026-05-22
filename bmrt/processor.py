@@ -469,6 +469,11 @@ class RecursiveCompressionEngine:
         return text.strip()
 
     def __call__(self, prompt_context: str, prompt_query: str) -> Dict[str, List[str]]:
+        # Reset per-sample state so engine can be reused across multiple samples
+        # without leaking the previous sample's local tail into the next sample.
+        self.prev_local_tail_kv = None
+        self.prev_local_tail_len = 0
+
         context_ids = self._tokenize(prompt_context)
         query_ids = self._tokenize_query_with_chat_template(prompt_query)
         blocks = self._split_into_blocks(context_ids)
