@@ -466,12 +466,16 @@ class RecursiveCompressionEngine:
         return text.strip()
 
     def __call__(self, prompt_context: str, prompt_query: str) -> Dict[str, List[str]]:
+        # Reset per-call state so engine is reusable across samples
+        self.prev_local_tail_kv = None
+        self.prev_local_tail_len = 0
+
         context_ids = self._tokenize(prompt_context)
         query_ids = self._tokenize_query_with_chat_template(prompt_query)
         blocks = self._split_into_blocks(context_ids)
-        
+
         print(f"Split into {len(blocks)} blocks. Processing...")
-        
+
         accumulated_kv_cache = None
         block_start_position = 0
         total_context_length = context_ids.shape[1]
