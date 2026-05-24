@@ -79,7 +79,7 @@ def main():
         script = os.path.join(CURRENT_DIR, 'synthetic', f"{config['task']}.py")
         additional_args = ' '.join([f'--{k} {v}' for k, v in config['args'].items()])
         command = (
-            f'python {script}'
+            f'python3 {script}'
             f' --save_dir {args.save_dir}'
             f' --save_name {args.task}'
             f' --subset validation'
@@ -99,12 +99,16 @@ def main():
         result = subprocess.run(
             command, shell=True, check=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            executable='/bin/bash',
         )
         print(result.stdout)
         if result.returncode != 0:
             print("Error:", result.stderr)
+            raise RuntimeError(f"Data generation failed for {args.task}")
     except subprocess.CalledProcessError as e:
-        print("Error output:", e.stderr)
+        print("STDOUT:", e.stdout)
+        print("STDERR:", e.stderr)
+        raise
 
     save_file = args.save_dir / args.task / 'validation.jsonl'
     print(f"Prepared {args.task} -> {save_file}")
