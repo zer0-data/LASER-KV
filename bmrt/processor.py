@@ -438,25 +438,28 @@ class RecursiveCompressionEngine:
 
     @torch.no_grad()
     def _generate(self, query_ids, kv_cache, total_context_length) -> torch.Tensor:
+        from .patch_fa import ApplyFlashAttentionPatch
         query_len = query_ids.shape[1]
         position_ids = torch.arange(total_context_length, total_context_length + query_len, device=self.device).unsqueeze(0)
-        
+
         past_key_values = DynamicCache.from_legacy_cache(kv_cache)
-        
-        outputs = self.model(input_ids=query_ids, position_ids=position_ids, past_key_values=past_key_values, use_cache=True)
+
+        with ApplyFlashAttentionPatch():
+            outputs = self.model(input_ids=query_ids, position_ids=position_ids, past_key_values=past_key_values, use_cache=True)
         current_cache = outputs.past_key_values
         next_token = torch.argmax(outputs.logits[:, -1, :], dim=-1).unsqueeze(-1)
         generated_tokens = [next_token]
-        
+
         next_position = total_context_length + query_len
         for _ in range(self.max_new_tokens - 1):
-            outputs = self.model(input_ids=next_token, position_ids=torch.tensor([[next_position]], device=self.device), past_key_values=current_cache, use_cache=True)
+            with ApplyFlashAttentionPatch():
+                outputs = self.model(input_ids=next_token, position_ids=torch.tensor([[next_position]], device=self.device), past_key_values=current_cache, use_cache=True)
             current_cache = outputs.past_key_values
             next_token = torch.argmax(outputs.logits[:, -1, :], dim=-1).unsqueeze(-1)
             generated_tokens.append(next_token)
             next_position += 1
             if next_token.item() == self.tokenizer.eos_token_id: break
-            
+
         return torch.cat(generated_tokens, dim=1)
 
     def _get_output_text(self, token_ids) -> str:

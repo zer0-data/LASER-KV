@@ -50,11 +50,12 @@ def _patched_prepare_from_posids(
 
     # Check if we have a single sequence (Batch Size == 1)
     if isinstance(position_ids, torch.Tensor) and position_ids.dim() == 2 and position_ids.shape[0] == 1:
-        # Q and K may have different seq lengths during generation:
-        # - prefill: Q == K (full block)
-        # - decode:  Q == 1, K == full kv cache length
         q_seq_len = query.shape[1] if query.dim() == 4 else query.shape[0]
         k_seq_len = key.shape[1] if key.dim() == 4 else key.shape[0]
+
+        # Handle Q != K (compressed cache + new query prefill/decode) by
+        # constructing separate cu_seqlens for Q and K rather than splitting
+        # on position_id == 0 (which the original does for sequence packing).
 
         cu_seq_lens_q = torch.tensor([0, q_seq_len], device=position_ids.device, dtype=torch.int32)
         cu_seq_lens_k = torch.tensor([0, k_seq_len], device=position_ids.device, dtype=torch.int32)
