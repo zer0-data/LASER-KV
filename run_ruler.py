@@ -52,7 +52,7 @@ ALL_TASKS = list(TASK_CONFIG.keys())
 
 def run(cmd):
     print(f'\n$ {cmd}\n')
-    subprocess.run(cmd, shell=True, check=True, text=True)
+    subprocess.run(cmd, shell=True, check=True, text=True, executable='/bin/bash')
 
 
 def main(args):
@@ -80,7 +80,7 @@ def main(args):
             # Step 1: Data generation
             if not os.path.exists(task_data) or args.regen_data:
                 run(
-                    f'python {DATA_SCRIPT}'
+                    f'python3 {DATA_SCRIPT}'
                     f' --save_dir {data_dir}'
                     f' --task {task}'
                     f' --tokenizer_path {args.model_path}'
@@ -98,7 +98,7 @@ def main(args):
                 continue
 
             run(
-                f'python {INFER_SCRIPT}'
+                f'python3 {INFER_SCRIPT}'
                 f' --input_path {task_data}'
                 f' --output_path {task_output}'
                 f' --model_path {args.model_path}'
@@ -122,13 +122,13 @@ def main(args):
 
         # Step 3: Evaluate all tasks at this seq_len
         run(
-            f'python {EVAL_SCRIPT}'
+            f'python3 {EVAL_SCRIPT}'
             f' --data_dir {results_dir}'
             f' --benchmark synthetic'
         )
 
     # Step 4: Aggregate results across all seq lengths
-    run(f'python {GATHER_SCRIPT} -e {output_base}')
+    run(f'python3 {GATHER_SCRIPT} -e {output_base}')
 
 
 if __name__ == '__main__':

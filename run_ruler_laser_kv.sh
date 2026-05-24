@@ -42,7 +42,7 @@ echo "============================================================"
 # --- 16k | ratio=0.25 ---
 echo ""
 echo ">>> [1/3] Sequence length: 16384 | compression_ratio=0.25"
-python "$SCRIPT_DIR/run_ruler.py" \
+python3 "$SCRIPT_DIR/run_ruler.py" \
     "${COMMON_ARGS[@]}" \
     --exp_name "${EXP_NAME}" \
     --seq_lengths 16384 \
@@ -51,7 +51,7 @@ python "$SCRIPT_DIR/run_ruler.py" \
 # --- 64k | ratio=0.125 ---
 echo ""
 echo ">>> [2/3] Sequence length: 65536 | compression_ratio=0.125"
-python "$SCRIPT_DIR/run_ruler.py" \
+python3 "$SCRIPT_DIR/run_ruler.py" \
     "${COMMON_ARGS[@]}" \
     --exp_name "${EXP_NAME}" \
     --seq_lengths 65536 \
@@ -60,7 +60,7 @@ python "$SCRIPT_DIR/run_ruler.py" \
 # --- 128k capped at 120k | ratio=0.125 ---
 echo ""
 echo ">>> [3/3] Sequence length: 120000 (128k capped) | compression_ratio=0.125"
-python "$SCRIPT_DIR/run_ruler.py" \
+python3 "$SCRIPT_DIR/run_ruler.py" \
     "${COMMON_ARGS[@]}" \
     --exp_name "${EXP_NAME}" \
     --seq_lengths 120000 \

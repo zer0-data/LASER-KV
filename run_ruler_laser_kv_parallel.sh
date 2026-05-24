@@ -40,7 +40,7 @@ echo "  GPU 1: 120k (128k capped)"
 echo "============================================================"
 
 # GPU 0: 16k then 64k (sequential within GPU 0)
-CUDA_VISIBLE_DEVICES=0 python "$SCRIPT_DIR/run_ruler.py" \
+CUDA_VISIBLE_DEVICES=0 python3 "$SCRIPT_DIR/run_ruler.py" \
     "${COMMON_ARGS[@]}" \
     --seq_lengths 16384 \
     --compression_ratio 0.25 \
@@ -49,7 +49,7 @@ GPU0_PID=$!
 echo "GPU 0 started (PID $GPU0_PID): 16k"
 
 # GPU 1: 120k dedicated
-CUDA_VISIBLE_DEVICES=1 python "$SCRIPT_DIR/run_ruler.py" \
+CUDA_VISIBLE_DEVICES=1 python3 "$SCRIPT_DIR/run_ruler.py" \
     "${COMMON_ARGS[@]}" \
     --seq_lengths 120000 \
     --compression_ratio 0.125 \
@@ -62,7 +62,7 @@ wait $GPU0_PID
 echo ""
 echo ">>> GPU 0: 16k done. Starting 64k..."
 
-CUDA_VISIBLE_DEVICES=0 python "$SCRIPT_DIR/run_ruler.py" \
+CUDA_VISIBLE_DEVICES=0 python3 "$SCRIPT_DIR/run_ruler.py" \
     "${COMMON_ARGS[@]}" \
     --seq_lengths 65536 \
     --compression_ratio 0.125 \
