@@ -61,26 +61,25 @@ def main(args):
             )
         print(f'Budget: {budget} (computed from seq_len={sample_len}, ratio={args.compression_ratio})')
 
-    # Load engine ONCE — reused across all samples
-    print('Loading engine...')
-    engine = RecursiveCompressionEngine(
-        model_path=args.model_path,
-        selector_type=args.method,
-        lsh_mode=args.lsh_mode,
-        selector_mode=args.selector_mode,
-        compression_mode=args.compression_mode,
-        backend=args.backend,
-        budget=budget,
-        protection_divisor=args.protection_divisor,
-        block_size=args.block_size,
-        max_new_tokens=args.tokens_to_generate,
-        stop_words=args.stop_words.split(',') if args.stop_words else None,
-        num_bits=args.num_bits,
-        num_tables=args.num_tables,
-        hybrid_primary=args.hybrid_primary,
-        hybrid_secondary=args.hybrid_secondary,
-        hybrid_ratio=args.hybrid_ratio,
-    )
+    def build_engine():
+        return RecursiveCompressionEngine(
+            model_path=args.model_path,
+            selector_type=args.method,
+            lsh_mode=args.lsh_mode,
+            selector_mode=args.selector_mode,
+            compression_mode=args.compression_mode,
+            backend=args.backend,
+            budget=budget,
+            protection_divisor=args.protection_divisor,
+            block_size=args.block_size,
+            max_new_tokens=args.tokens_to_generate,
+            stop_words=args.stop_words.split(',') if args.stop_words else None,
+            num_bits=args.num_bits,
+            num_tables=args.num_tables,
+            hybrid_primary=args.hybrid_primary,
+            hybrid_secondary=args.hybrid_secondary,
+            hybrid_ratio=args.hybrid_ratio,
+        )
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output_path)), exist_ok=True)
 
@@ -93,6 +92,8 @@ def main(args):
         if sample_idx in done_indices:
             continue
 
+        # Reload engine per sample for state isolation (slower but stable)
+        engine = build_engine()
         pred = ''
         try:
             result = engine(
@@ -105,6 +106,11 @@ def main(args):
             import traceback
             traceback.print_exc()
         finally:
+            try:
+                engine.cleanup()
+            except Exception:
+                pass
+            del engine
             gc.collect()
             torch.cuda.empty_cache()
 
@@ -119,14 +125,6 @@ def main(args):
         with open(args.output_path, 'a') as f:
             f.write(json.dumps(record) + '\n')
         new_preds += 1
-
-    try:
-        engine.cleanup()
-    except Exception:
-        pass
-    del engine
-    gc.collect()
-    torch.cuda.empty_cache()
 
     print(f'\nDone. {new_preds} new predictions written to {args.output_path}')
 
