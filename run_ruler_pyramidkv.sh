@@ -23,7 +23,7 @@ COMMON_ARGS=(
     --prompt_config "$PROMPT_CONFIG"
     --infer_script "$INFER_SCRIPT"
     --window_size "$WINDOW_SIZE"
-    --num_samples 500
+    --num_samples 100
     --use_cache
 )
 

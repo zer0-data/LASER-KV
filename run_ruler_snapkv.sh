@@ -21,7 +21,7 @@ COMMON_ARGS=(
     --model_path "$MODEL_PATH"
     --prompt_config "$PROMPT_CONFIG"
     --infer_script "$INFER_SCRIPT"
-    --num_samples 500
+    --num_samples 100
     --use_cache
 )
 
