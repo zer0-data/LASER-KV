@@ -66,7 +66,16 @@ def _patched_prepare_from_posids(
         if value.dim() == 4:
             value = value.squeeze(0)
 
-        # Return flattened q, k, v + new lengths
+        # transformers 4.44+ caller signature expects 6 unpacked values:
+        #   (q, k, v, indices_q, cu_seq_lens, max_seq_lens)
+        # while older versions returned 5:
+        #   (q, k, v, (cu_q, cu_k), (max_q, max_k))
+        # Detect by checking caller via transformers version.
+        from packaging import version as _v
+        _tv = _v.parse(transformers.__version__.split('+')[0])
+        if _tv >= _v.parse('4.43.0'):
+            indices_q = torch.arange(seq_len, device=position_ids.device, dtype=torch.int32)
+            return query, key, value, indices_q, (cu_seq_lens, cu_seq_lens), (max_length, max_length)
         return query, key, value, (cu_seq_lens, cu_seq_lens), (max_length, max_length)
 
     # Fallback to original (multi-batch or non-tensor position_ids)
