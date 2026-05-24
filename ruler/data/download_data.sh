@@ -12,7 +12,7 @@ mkdir -p "$JSON_DIR"
 if [ ! -f "$JSON_DIR/squad.json" ]; then
     echo "Downloading SQuAD..."
     wget -q -O "$JSON_DIR/squad.json" \
-        https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json
+        https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v2.0.json
     echo "  -> $JSON_DIR/squad.json"
 else
     echo "SQuAD already exists."
