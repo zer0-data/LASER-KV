@@ -50,12 +50,14 @@ def _patched_prepare_from_posids(
 
     # Check if we have a single sequence (Batch Size == 1)
     if isinstance(position_ids, torch.Tensor) and position_ids.dim() == 2 and position_ids.shape[0] == 1:
-        seq_len = position_ids.shape[1]
+        # Q and K may have different seq lengths during generation:
+        # - prefill: Q == K (full block)
+        # - decode:  Q == 1, K == full kv cache length
+        q_seq_len = query.shape[1] if query.dim() == 4 else query.shape[0]
+        k_seq_len = key.shape[1] if key.dim() == 4 else key.shape[0]
 
-        # Manually construct cumulative sequence lengths for a SINGLE sequence.
-        # Format: [0, seq_len]
-        cu_seq_lens = torch.tensor([0, seq_len], device=position_ids.device, dtype=torch.int32)
-        max_length = seq_len
+        cu_seq_lens_q = torch.tensor([0, q_seq_len], device=position_ids.device, dtype=torch.int32)
+        cu_seq_lens_k = torch.tensor([0, k_seq_len], device=position_ids.device, dtype=torch.int32)
 
         # Reshape (flatten) q, k, v for Flash Attention Varlen if they are 4D
         # shape: [1, seq, heads, dim] -> [seq, heads, dim]
@@ -66,17 +68,15 @@ def _patched_prepare_from_posids(
         if value.dim() == 4:
             value = value.squeeze(0)
 
-        # transformers 4.44+ caller signature expects 6 unpacked values:
-        #   (q, k, v, indices_q, cu_seq_lens, max_seq_lens)
-        # while older versions returned 5:
-        #   (q, k, v, (cu_q, cu_k), (max_q, max_k))
-        # Detect by checking caller via transformers version.
+        # transformers 4.43+ returns 6 values:
+        #   (q, k, v, indices_q, (cu_q, cu_k), (max_q, max_k))
+        # Older versions returned 5 (no indices_q).
         from packaging import version as _v
         _tv = _v.parse(transformers.__version__.split('+')[0])
         if _tv >= _v.parse('4.43.0'):
-            indices_q = torch.arange(seq_len, device=position_ids.device, dtype=torch.int32)
-            return query, key, value, indices_q, (cu_seq_lens, cu_seq_lens), (max_length, max_length)
-        return query, key, value, (cu_seq_lens, cu_seq_lens), (max_length, max_length)
+            indices_q = torch.arange(q_seq_len, device=position_ids.device, dtype=torch.int32)
+            return query, key, value, indices_q, (cu_seq_lens_q, cu_seq_lens_k), (q_seq_len, k_seq_len)
+        return query, key, value, (cu_seq_lens_q, cu_seq_lens_k), (q_seq_len, k_seq_len)
 
     # Fallback to original (multi-batch or non-tensor position_ids)
     if _original_prepare_from_posids is None:
