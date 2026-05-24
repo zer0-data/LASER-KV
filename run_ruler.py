@@ -38,7 +38,7 @@ import yaml
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 RULER_DIR = os.path.join(CURRENT_DIR, 'ruler')
 DATA_SCRIPT = os.path.join(RULER_DIR, 'data', 'prepare.py')
-INFER_SCRIPT = os.path.join(CURRENT_DIR, 'tests', 'pred_ruler.py')
+DEFAULT_INFER_SCRIPT = os.path.join(CURRENT_DIR, 'tests', 'pred_ruler.py')
 EVAL_SCRIPT = os.path.join(RULER_DIR, 'eval', 'evaluate.py')
 GATHER_SCRIPT = os.path.join(RULER_DIR, 'gather_results_ruler.py')
 
@@ -58,8 +58,10 @@ def run(cmd):
 def main(args):
     tasks = args.tasks if args.tasks else ALL_TASKS
     output_base = os.path.join(CURRENT_DIR, 'results', args.exp_name)
+    infer_script = args.infer_script or DEFAULT_INFER_SCRIPT
 
     stop_words_flag = f"--stop_words '{args.stop_words}'" if args.stop_words else ''
+    window_size_flag = f'--window_size {args.window_size}' if args.window_size else ''
 
     for seq_len in args.seq_lengths:
         print(f'\n{"="*60}')
@@ -98,7 +100,7 @@ def main(args):
                 continue
 
             run(
-                f'python {INFER_SCRIPT}'
+                f'python {infer_script}'
                 f' --input_path {task_data}'
                 f' --output_path {task_output}'
                 f' --model_path {args.model_path}'
@@ -117,6 +119,7 @@ def main(args):
                 f' --num_bits {args.num_bits}'
                 f' --num_tables {args.num_tables}'
                 + (f' {stop_words_flag}' if stop_words_flag else '')
+                + (f' {window_size_flag}' if window_size_flag else '')
                 + (' --use_cache' if args.use_cache else '')
             )
 
@@ -166,6 +169,10 @@ if __name__ == '__main__':
     parser.add_argument('--num_bits', type=int, default=6)
     parser.add_argument('--num_tables', type=int, default=4)
     parser.add_argument('--stop_words', default='')
+    parser.add_argument('--infer_script', default=None,
+                        help='Override inference script (default: tests/pred_ruler.py)')
+    parser.add_argument('--window_size', type=int, default=None,
+                        help='PyramidKV window size; passed through to infer_script if set')
 
     args = parser.parse_args()
     main(args)
