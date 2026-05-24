@@ -29,7 +29,7 @@ COMMON_ARGS=(
     --block_size 4096
     --num_bits 10
     --num_tables 8
-    --num_samples 500
+    --num_samples 100
     --use_cache
 )
 

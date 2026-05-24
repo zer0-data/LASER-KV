@@ -14,7 +14,15 @@ def parse_summary_file(seq_result_dir):
     tasks = lines[1].strip().split(',')[1:]
     scores = lines[2].strip().split(',')[1:]
     nulls = lines[3].strip().split(',')[1:]
-    unfinished = [tasks[i] for i in range(len(nulls)) if not nulls[i].endswith('/500')]
+    # Detect unfinished tasks: parse "X/Y" denominator and check vs max across tasks
+    denoms = []
+    for n in nulls:
+        try:
+            denoms.append(int(n.split('/')[1]))
+        except (IndexError, ValueError):
+            denoms.append(0)
+    expected = max(denoms) if denoms else 0
+    unfinished = [tasks[i] for i in range(len(nulls)) if denoms[i] != expected]
     return tasks, scores, nulls, unfinished
 
 
