@@ -438,28 +438,25 @@ class RecursiveCompressionEngine:
 
     @torch.no_grad()
     def _generate(self, query_ids, kv_cache, total_context_length) -> torch.Tensor:
-        from .patch_fa import ApplyFlashAttentionPatch
         query_len = query_ids.shape[1]
         position_ids = torch.arange(total_context_length, total_context_length + query_len, device=self.device).unsqueeze(0)
-
+        
         past_key_values = DynamicCache.from_legacy_cache(kv_cache)
-
-        with ApplyFlashAttentionPatch():
-            outputs = self.model(input_ids=query_ids, position_ids=position_ids, past_key_values=past_key_values, use_cache=True)
+        
+        outputs = self.model(input_ids=query_ids, position_ids=position_ids, past_key_values=past_key_values, use_cache=True)
         current_cache = outputs.past_key_values
         next_token = torch.argmax(outputs.logits[:, -1, :], dim=-1).unsqueeze(-1)
         generated_tokens = [next_token]
-
+        
         next_position = total_context_length + query_len
         for _ in range(self.max_new_tokens - 1):
-            with ApplyFlashAttentionPatch():
-                outputs = self.model(input_ids=next_token, position_ids=torch.tensor([[next_position]], device=self.device), past_key_values=current_cache, use_cache=True)
+            outputs = self.model(input_ids=next_token, position_ids=torch.tensor([[next_position]], device=self.device), past_key_values=current_cache, use_cache=True)
             current_cache = outputs.past_key_values
             next_token = torch.argmax(outputs.logits[:, -1, :], dim=-1).unsqueeze(-1)
             generated_tokens.append(next_token)
             next_position += 1
             if next_token.item() == self.tokenizer.eos_token_id: break
-
+            
         return torch.cat(generated_tokens, dim=1)
 
     def _get_output_text(self, token_ids) -> str:
@@ -469,16 +466,12 @@ class RecursiveCompressionEngine:
         return text.strip()
 
     def __call__(self, prompt_context: str, prompt_query: str) -> Dict[str, List[str]]:
-        # Reset per-call state so engine is reusable across samples
-        self.prev_local_tail_kv = None
-        self.prev_local_tail_len = 0
-
         context_ids = self._tokenize(prompt_context)
         query_ids = self._tokenize_query_with_chat_template(prompt_query)
         blocks = self._split_into_blocks(context_ids)
-
+        
         print(f"Split into {len(blocks)} blocks. Processing...")
-
+        
         accumulated_kv_cache = None
         block_start_position = 0
         total_context_length = context_ids.shape[1]
