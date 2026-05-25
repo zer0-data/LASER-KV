@@ -14,7 +14,8 @@ def parse_summary_file(seq_result_dir):
     tasks = lines[1].strip().split(',')[1:]
     scores = lines[2].strip().split(',')[1:]
     nulls = lines[3].strip().split(',')[1:]
-    unfinished = [tasks[i] for i in range(len(nulls)) if not nulls[i].endswith('/500')]
+    total = nulls[0].split('/')[-1] if nulls else '500'
+    unfinished = [tasks[i] for i in range(len(nulls)) if not nulls[i].endswith(f'/{total}')]
     return tasks, scores, nulls, unfinished
 
 
