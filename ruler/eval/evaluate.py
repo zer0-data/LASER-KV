@@ -75,7 +75,7 @@ def run_evaluation_per_task(task_config, predictions_file, verbose=0):
     inputs, predicts, references, indices = get_pred_and_ref(predictions_file, task_config)
     task_nulls = f'{sum(len(x) == 0 for x in predicts)}/{len(predicts)}'
 
-    if references and references[0][0] is not None:
+    if references and references[0] and references[0][0] is not None:
         task_score = task_config['metric_fn'](predicts, references)
     else:
         task_score = 0.0
